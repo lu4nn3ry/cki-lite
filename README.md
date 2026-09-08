@@ -19,7 +19,7 @@ chmod +x cki-lite.py
 
 The default endpoint is `https://integrate.api.nvidia.com/v1`. Override it with `NIM_BASE_URL` or `--base-url` for a self-hosted NIM deployment.
 
-Only Gemma 3/4 and text-oriented Nemotron instruct/super/ultra/lightning/nano models are shown. Embedding, vision, safety, parser, reward and other specialized models are filtered out.
+Only Gemma 3/4, OpenAI GPT-OSS and text-oriented Nemotron instruct/super/ultra/lightning/nano models are shown. Embedding, vision, safety, parser, reward and other specialized models are filtered out.
 
 ## CLI commands
 

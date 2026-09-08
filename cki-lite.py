@@ -57,6 +57,7 @@ def visible_models(base, key):
         if any(x in name for x in ('embed','vision','safety','content-safety','parse','reward','diffusion','recurrent','omni')):
             return False
         return ('gemma-3-' in name or 'gemma-4-' in name or
+                'gpt-oss' in name or
                 'nemotron' in name and any(x in name for x in ('instruct','super','ultra','lightning','nano-3')))
     return [m['id'] for m in models if m.get('id') and agent_model(m['id'])]
 

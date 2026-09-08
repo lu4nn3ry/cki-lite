@@ -17,6 +17,15 @@ chmod +x cki-lite.py
 ./cki-lite.py --verbose
 ```
 
+Para uso sem prompt, crie um `.env` ao lado do script ou em `~/.cki-lite/.env`:
+
+```dotenv
+NVIDIA_API_KEY=nvapi-...
+NIM_BASE_URL=https://integrate.api.nvidia.com/v1
+```
+
+O `.env` é carregado automaticamente e ignorado pelo Git.
+
 The default endpoint is `https://integrate.api.nvidia.com/v1`. Override it with `NIM_BASE_URL` or `--base-url` for a self-hosted NIM deployment.
 
 Only Gemma 3/4, OpenAI GPT-OSS and text-oriented Nemotron instruct/super/ultra/lightning/nano models are shown. Embedding, vision, safety, parser, reward and other specialized models are filtered out.

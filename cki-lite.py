@@ -21,6 +21,19 @@ def session_dir():
     os.makedirs(path, exist_ok=True)
     return path
 
+def load_dotenv():
+    paths = [os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), os.path.join(session_dir(), '.env'), os.path.join(os.getcwd(), '.env')]
+    for path in paths:
+        if not os.path.exists(path): continue
+        with open(path, encoding='utf-8') as env_file:
+            for line in env_file:
+                line=line.strip()
+                if not line or line.startswith('#'): continue
+                if line.startswith('export '): line=line[7:].strip()
+                if '=' not in line: continue
+                name,value=line.split('=',1); value=value.strip().strip('"').strip("'")
+                if name.strip() and name.strip() not in os.environ: os.environ[name.strip()]=value
+
 def save_session(session_id, model, history, started):
     with open(os.path.join(session_dir(), session_id+'.json'),'w',encoding='utf-8') as f:
         json.dump({'session_id':session_id,'started_at':started,'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'model':model,'messages':history},f,ensure_ascii=False,indent=2)
@@ -67,6 +80,7 @@ def choose_model(models):
     return models[int(selected)-1]
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(prog='cki-lite')
     parser.add_argument('--base-url', default=os.getenv('NIM_BASE_URL','https://integrate.api.nvidia.com/v1'))
     parser.add_argument('--key', help='NVIDIA API key; prefer NVIDIA_API_KEY instead')

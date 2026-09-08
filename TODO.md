@@ -5,6 +5,8 @@
 Este arquivo define o limite do projeto. O `lite` é uma restrição arquitetural,
 não apenas uma versão reduzida de outro coding agent.
 
+As decisões correspondentes a cada entrega estão registradas em [ADR.md](ADR.md).
+
 ## Contrato permanente
 
 - Um único script Python executável (`cki-lite.py`).

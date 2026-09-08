@@ -14,6 +14,7 @@ export NVIDIA_API_KEY='nvapi-...'
 chmod +x cki-lite.py
 ./cki-lite.py --list-models
 ./cki-lite.py
+./cki-lite.py --verbose
 ```
 
 The default endpoint is `https://integrate.api.nvidia.com/v1`. Override it with `NIM_BASE_URL` or `--base-url` for a self-hosted NIM deployment.
@@ -27,6 +28,8 @@ Only Gemma 3/4 and text-oriented Nemotron instruct/super/ultra/lightning/nano mo
 - `/quit` — exit.
 
 If a selected model fails, cki-lite automatically tries another visible Gemma/Nemotron model while preserving the task history.
+
+Use `--verbose` to see the observable agent trace: loop number, active model, message count, request latency, tool calls, command execution, exit codes, timeouts and model fallback. Provider hidden chain-of-thought is not exposed; the trace shows actions and results instead.
 
 ## Security
 

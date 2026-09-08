@@ -31,6 +31,18 @@ If a selected model fails, cki-lite automatically tries another visible Gemma/Ne
 
 Use `--verbose` to see the observable agent trace: loop number, active model, message count, request latency, tool calls, command execution, exit codes, timeouts and model fallback. Provider hidden chain-of-thought is not exposed; the trace shows actions and results instead.
 
+## Saved conversations and debug export
+
+Sessions are saved automatically as JSON under `~/.cki-lite/` (override with `CKI_LITE_HOME`). The session ID is printed when chat starts.
+
+```sh
+./cki-lite.py --session 20260908-120000-a1b2c3  # resume
+./cki-lite.py --export debug.json                # export all sessions
+./cki-lite.py --session 20260908-120000-a1b2c3 --export debug.json
+```
+
+Inside a chat, `/save` saves immediately and `/export` exports the current session. Export files contain messages, tool calls, command output, model changes and loop context, but never the API key.
+
 ## Security
 
 The terminal tool runs commands with the same permissions as the `cki-lite` process. Run it only on a machine you control. Never commit API keys; use `NVIDIA_API_KEY` or an interactive prompt.

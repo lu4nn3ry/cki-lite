@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Minimal NVIDIA NIM terminal agent for Alpine and other Unix-like systems."""
-import argparse, getpass, json, os, subprocess, time, urllib.request
+import argparse, getpass, json, os, subprocess, time, urllib.request, uuid
 
 TOOL = {'type':'function','function':{'name':'terminal','description':'Execute shell commands on this host for the user request.','parameters':{'type':'object','properties':{'command':{'type':'string'},'cwd':{'type':'string'},'timeout':{'type':'integer'}},'required':['command']}}}
 
@@ -12,6 +12,29 @@ def api(base, key, path, data=None, method='POST'):
 
 def trace(enabled, message):
     if enabled: print('[trace] ' + message, flush=True)
+
+def session_dir():
+    path = os.path.expanduser(os.getenv('CKI_LITE_HOME','~/.cki-lite'))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def save_session(session_id, model, history, started):
+    with open(os.path.join(session_dir(), session_id+'.json'),'w',encoding='utf-8') as f:
+        json.dump({'session_id':session_id,'started_at':started,'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'model':model,'messages':history},f,ensure_ascii=False,indent=2)
+
+def load_session(session_id):
+    path=os.path.join(session_dir(),session_id+'.json')
+    if not os.path.exists(path): return None
+    with open(path,encoding='utf-8') as f: return json.load(f)
+
+def export_sessions(target, session_id=None):
+    names=[session_id+'.json'] if session_id else sorted(x for x in os.listdir(session_dir()) if x.endswith('.json'))
+    data=[]
+    for name in names:
+        item=load_session(name[:-5])
+        if item: data.append(item)
+    with open(target,'w',encoding='utf-8') as f: json.dump(data[0] if session_id and data else data,f,ensure_ascii=False,indent=2)
+    print('Exportado: %s (%d sessão(ões))' % (target,len(data)))
 
 def shell(args, verbose=False):
     command = args.get('command',''); cwd = args.get('cwd') or os.getcwd(); timeout = min(int(args.get('timeout',120)),900)
@@ -46,19 +69,29 @@ def main():
     parser.add_argument('--model')
     parser.add_argument('--list-models', action='store_true')
     parser.add_argument('--verbose', action='store_true', help='show agent loop and tool execution trace')
+    parser.add_argument('--session', help='resume a saved session')
+    parser.add_argument('--export', metavar='FILE', help='export saved session(s) to JSON')
     args = parser.parse_args()
+    if args.export:
+        export_sessions(args.export, args.session); return
     key = args.key or os.getenv('NVIDIA_API_KEY') or getpass.getpass('NVIDIA API key: ')
     models = visible_models(args.base_url, key)
     if args.list_models:
         print('\n'.join(models)); return
-    model = args.model or choose_model(models)
+    session_id = args.session or time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:6]
+    saved = load_session(session_id) if args.session else None
+    model = (saved or {}).get('model') or args.model or choose_model(models)
     print('cki-lite | %s | terminal agent enabled' % model)
-    history = []
+    history = (saved or {}).get('messages', [])
+    started_at = (saved or {}).get('started_at') or time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+    print('session: '+session_id)
     while True:
         try: prompt = input('\nVocê> ').strip()
         except (EOFError, KeyboardInterrupt): break
-        if prompt in ('/quit','/exit'): break
-        if prompt == '/clear': history = []; continue
+        if prompt in ('/quit','/exit'): save_session(session_id,model,history,started_at); break
+        if prompt == '/clear': history = []; save_session(session_id,model,history,started_at); continue
+        if prompt == '/save': save_session(session_id,model,history,started_at); print('Sessão salva: '+session_id); continue
+        if prompt == '/export': export_sessions(session_id+'.json',session_id); continue
         if prompt == '/terminal': print(shell({'command':input('shell> ')}, args.verbose)); continue
         history.append({'role':'user','content':prompt})
         for loop in range(8):
@@ -84,5 +117,6 @@ def main():
                 except Exception: arguments = {'command':'echo invalid tool arguments'}
                 print('[tool] ' + arguments.get('command','')); output = shell(arguments, args.verbose); print(output['stdout']+output['stderr'], end='')
                 history.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps(output)})
+            save_session(session_id,model,history,started_at)
 
 if __name__ == '__main__': main()

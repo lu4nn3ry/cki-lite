@@ -1,5 +1,12 @@
 # cki-lite
 
+Terminal display supports basic Markdown (headings, bold, italic, inline code,
+fenced code, lists and links). Shell executable positions and inline code are cyan;
+stdout is green, stderr is red, and exit status is shown separately. Raw Markdown
+and tool output are preserved in session exports. Pipe output is plain by default.
+Use `--color always` to force colors or `--color never` / `NO_COLOR=1` to disable
+automatic colors. This lightweight renderer does not implement full Markdown tables.
+
 The NVIDIA catalog is cached after its first successful fetch. Use `--refresh-models`
 to refresh it. A locally measured shortlist in `~/.cki-lite/cache/selected.json`
 overrides the family filter and orders the menu by measured tool-call latency.
@@ -21,7 +28,23 @@ chmod +x cki-lite.py
 ./cki-lite.py --list-models
 ./cki-lite.py
 ./cki-lite.py --verbose
+./cki-lite.py --version
+./cki-lite.py --model MODEL --prompt 'inspect the current directory'
 ```
+
+Providers OpenAI-compatible adicionais podem ser selecionados sem dependências
+extras:
+
+```sh
+./cki-lite.py --provider ollama
+./cki-lite.py --provider openrouter --model openai/gpt-oss-120b
+./cki-lite.py --provider groq --model openai/gpt-oss-120b
+./cki-lite.py --provider gemini --model gemini-2.5-flash
+```
+
+Use `OLLAMA_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` ou `GEMINI_API_KEY`.
+Ollama local usa `ollama` como credencial padrão e normalmente não requer chave.
+Também é possível definir `CKI_LITE_PROVIDER` e o `*_BASE_URL` correspondente.
 
 Para uso sem prompt, crie um `.env` ao lado do script ou em `~/.cki-lite/.env`:
 
@@ -46,6 +69,14 @@ If a selected model fails, cki-lite automatically tries another visible Gemma/Ne
 
 Use `--verbose` to see the observable agent trace: loop number, active model, message count, request latency, tool calls, command execution, exit codes, timeouts and model fallback. Provider hidden chain-of-thought is not exposed; the trace shows actions and results instead.
 
+Use `--prompt` for a single non-interactive task. Tool output is bounded to
+12,000 characters and the oldest conversation messages are removed when the
+serialized history exceeds 60,000 characters.
+
+Use `--benchmark-models` to measure visible models and persist their latency order
+in `~/.cki-lite/cache/selected.json`. Use `--install` to copy the executable to
+`~/.local/bin/cki-lite` on Unix.
+
 ## Saved conversations and debug export
 
 Sessions are saved automatically as JSON under `~/.cki-lite/` (override with `CKI_LITE_HOME`). The session ID is printed when chat starts.
@@ -61,6 +92,12 @@ Inside a chat, `/save` saves immediately and `/export` exports the current sessi
 ## Security
 
 The terminal tool runs commands with the same permissions as the `cki-lite` process. Run it only on a machine you control. Never commit API keys; use `NVIDIA_API_KEY` or an interactive prompt.
+
+Commands recognized as read-only run automatically. Mutating commands require an
+interactive `y/N` confirmation; destructive commands require typing
+`yes, I understand`. Unknown commands are treated as mutating, and all commands
+requiring confirmation are blocked when stdin is not a terminal. These guardrails
+are a confirmation layer, not a sandbox or privilege boundary.
 
 ## License
 

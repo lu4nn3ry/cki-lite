@@ -22,7 +22,7 @@ def session_dir():
     return path
 
 def load_dotenv():
-    paths = [os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), os.path.join(session_dir(), '.env'), os.path.join(os.getcwd(), '.env')]
+    paths = [os.path.join(os.path.dirname(os.path.realpath(__file__)), '.env'), os.path.join(session_dir(), '.env'), os.path.join(os.getcwd(), '.env')]
     for path in paths:
         if not os.path.exists(path): continue
         with open(path, encoding='utf-8') as env_file:

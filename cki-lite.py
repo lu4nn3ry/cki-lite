@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Minimal NVIDIA NIM terminal agent for Alpine and other Unix-like systems."""
-import argparse, getpass, json, os, subprocess, time, urllib.request, uuid
+import argparse, getpass, json, os, subprocess, time, urllib.request, urllib.error, uuid
 
 TOOL = {'type':'function','function':{'name':'terminal','description':'Execute shell commands on this host for the user request.','parameters':{'type':'object','properties':{'command':{'type':'string'},'cwd':{'type':'string'},'timeout':{'type':'integer'}},'required':['command']}}}
 
 def api(base, key, path, data=None, method='POST'):
     raw = None if data is None else json.dumps(data).encode()
     req = urllib.request.Request(base.rstrip('/') + path, raw, method=method, headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'})
-    with urllib.request.urlopen(req, timeout=180) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req, timeout=180) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode('utf-8','replace').replace(key,'[REDACTED]')
+        raise RuntimeError('HTTP %s: %s' % (error.code, detail[:500]))
 
 def is_rate_limit(error):
     return getattr(error, 'code', None) == 429 or 'rate limit' in str(error).lower() or 'too many requests' in str(error).lower()

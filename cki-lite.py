@@ -10,6 +10,9 @@ def api(base, key, path, data=None, method='POST'):
     with urllib.request.urlopen(req, timeout=180) as response:
         return json.loads(response.read())
 
+def is_rate_limit(error):
+    return getattr(error, 'code', None) == 429 or 'rate limit' in str(error).lower() or 'too many requests' in str(error).lower()
+
 def trace(enabled, message):
     if enabled: print('[trace] ' + message, flush=True)
 
@@ -97,9 +100,19 @@ def main():
         for loop in range(8):
             trace(args.verbose, 'agent loop=%d model=%s messages=%d' % (loop+1, model, len(history)))
             started = time.time()
-            try:
-                result = api(args.base_url, key, '/chat/completions', {'model':model,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096})
-            except Exception as error:
+            retries = 0; result = None; error = None
+            while True:
+                try:
+                    result = api(args.base_url, key, '/chat/completions', {'model':model,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096})
+                    break
+                except Exception as error:
+                    if is_rate_limit(error):
+                        retries += 1; delay = retries * 5
+                        trace(args.verbose, 'rate limit; retry=%d wait=%ss model=%s' % (retries, delay, model))
+                        print('[rate-limit] %s; retrying in %ss (attempt %d)' % (model, delay, retries), flush=True)
+                        time.sleep(delay); continue
+                    break
+            if not isinstance(result, dict):
                 trace(args.verbose, 'model error elapsed=%.2fs' % (time.time()-started))
                 print('\nNIM error on %s: %s' % (model, error)); switched = False
                 for candidate in models:

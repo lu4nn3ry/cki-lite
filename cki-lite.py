@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Minimal NVIDIA NIM terminal agent for Alpine and other Unix-like systems."""
-import argparse, getpass, json, os, subprocess, time, urllib.request, urllib.error, uuid
+import argparse, getpass, json, os, subprocess, time, urllib.request, urllib.error, uuid, hashlib
 
 TOOL = {'type':'function','function':{'name':'terminal','description':'Execute shell commands on this host for the user request.','parameters':{'type':'object','properties':{'command':{'type':'string'},'cwd':{'type':'string'},'timeout':{'type':'integer'}},'required':['command']}}}
 
@@ -12,7 +12,9 @@ def api(base, key, path, data=None, method='POST'):
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
         detail = error.read().decode('utf-8','replace').replace(key,'[REDACTED]')
-        raise RuntimeError('HTTP %s: %s' % (error.code, detail[:500]))
+        failure = RuntimeError('HTTP %s: %s' % (error.code, detail[:500]))
+        failure.code = error.code
+        raise failure from None
 
 def is_rate_limit(error):
     return getattr(error, 'code', None) == 429 or 'rate limit' in str(error).lower() or 'too many requests' in str(error).lower()
@@ -67,8 +69,23 @@ def shell(args, verbose=False):
         trace(verbose, 'terminal timeout elapsed=%.2fs' % (time.time()-started))
         return {'code':124,'stdout':'','stderr':'command timeout'}
 
-def visible_models(base, key):
-    models = api(base, key, '/models', method='GET').get('data', [])
+def visible_models(base, key, refresh=False):
+    cache_dir=os.path.join(session_dir(),'cache'); os.makedirs(cache_dir,exist_ok=True)
+    cache=os.path.join(cache_dir,hashlib.sha256(base.encode()).hexdigest()[:16]+'.json')
+    models=None
+    if not refresh and os.path.exists(cache):
+        try:
+            with open(cache) as f: models=json.load(f)
+        except (ValueError,OSError): pass
+    if models is None:
+        models = api(base, key, '/models', method='GET').get('data', [])
+        with open(cache+'.tmp','w') as f: json.dump(models,f)
+        os.replace(cache+'.tmp',cache)
+    selected=os.path.join(cache_dir,'selected.json')
+    if os.path.exists(selected):
+        with open(selected) as f: ranked=json.load(f)
+        available={m['id'] for m in models}
+        return [m for m in ranked if m in available]
     def agent_model(model_id):
         name = model_id.lower()
         if any(x in name for x in ('embed','vision','safety','content-safety','parse','reward','diffusion','recurrent','omni')):
@@ -90,6 +107,7 @@ def main():
     parser.add_argument('--key', help='NVIDIA API key; prefer NVIDIA_API_KEY instead')
     parser.add_argument('--model')
     parser.add_argument('--list-models', action='store_true')
+    parser.add_argument('--refresh-models', action='store_true', help='refresh cached NVIDIA catalog')
     parser.add_argument('--verbose', action='store_true', help='show agent loop and tool execution trace')
     parser.add_argument('--session', help='resume a saved session')
     parser.add_argument('--export', metavar='FILE', help='export saved session(s) to JSON')
@@ -97,7 +115,7 @@ def main():
     if args.export:
         export_sessions(args.export, args.session); return
     key = args.key or os.getenv('NVIDIA_API_KEY') or getpass.getpass('NVIDIA API key: ')
-    models = visible_models(args.base_url, key)
+    models = visible_models(args.base_url, key, args.refresh_models)
     if args.list_models:
         print('\n'.join(models)); return
     session_id = args.session or time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:6]
@@ -144,7 +162,9 @@ def main():
                 if not switched: print('[auto] no available Gemma/Nemotron model; task paused.'); break
             message = result['choices'][0]['message']; history.append(message); calls = message.get('tool_calls', [])
             trace(args.verbose, 'model response elapsed=%.2fs tool_calls=%d' % (time.time()-started, len(calls)))
-            if not calls: print('\nNIM> ' + (message.get('content') or '')); break
+            if not calls:
+                save_session(session_id,model,history,started_at)
+                print('\nNIM> ' + (message.get('content') or '')); break
             for call in calls:
                 try: arguments = json.loads(call['function']['arguments'])
                 except Exception: arguments = {'command':'echo invalid tool arguments'}

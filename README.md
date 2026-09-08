@@ -1,5 +1,11 @@
 # cki-lite
 
+The NVIDIA catalog is cached after its first successful fetch. Use `--refresh-models`
+to refresh it. A locally measured shortlist in `~/.cki-lite/cache/selected.json`
+overrides the family filter and orders the menu by measured tool-call latency.
+Benchmark success validates a basic tool call, not general intelligence or every
+Alpine operation. Timeouts are inconclusive, not proof that a model is unavailable.
+
 Minimal open-source terminal agent for NVIDIA NIM. It uses only Python's standard library, works on Alpine Linux, exposes a CLI chat, supports OpenAI-compatible tool calling, and can execute shell commands requested by the agent.
 
 ## Requirements

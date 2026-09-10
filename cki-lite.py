@@ -3,7 +3,8 @@
 import argparse, getpass, json, os, shlex, shutil, subprocess, time, urllib.request, urllib.error, uuid, hashlib, re, sys
 
 COLOR = False
-VERSION = '0.2.0'
+RENDERER = 'plain'
+VERSION = '0.3.0'
 MAX_OUTPUT_CHARS = 12000
 MAX_HISTORY_CHARS = 60000
 
@@ -29,28 +30,57 @@ def inline_markdown(text):
         if m[3] is not None or m[4] is not None: return paint(m[3] or m[4], '1')
         if m[5] is not None: return paint(m[5], '4;34')+' ('+m[6]+')'
         return paint(m[7], '3')
-    return re.sub(pattern, replace, text)
+    text=re.sub(pattern, replace, text)
+    greek={'alpha':'α','beta':'β','gamma':'γ','delta':'δ','epsilon':'ε','theta':'θ','lambda':'λ','mu':'μ','pi':'π','sigma':'σ','phi':'φ','omega':'ω','Delta':'Δ','Theta':'Θ','Lambda':'Λ','Pi':'Π','Sigma':'Σ','Phi':'Φ','Omega':'Ω'}
+    text=re.sub(r'\\('+'|'.join(greek)+r')\b',lambda m:greek[m[1]],text)
+    text=re.sub(r'\\frac\{([^{}]+)\}\{([^{}]+)\}',r'(\1)/(\2)',text)
+    supers=str.maketrans('0123456789+-=()','⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾')
+    return re.sub(r'\^\{?([0-9+\-=()]+)\}?',lambda m:m[1].translate(supers),text)
 
 def markdown(text):
-    lines=[]; fence=None; language=''
-    for line in clean_terminal(text).splitlines():
+    source=clean_terminal(text).splitlines(); lines=[]; fence=None; language=''; index=0
+    while index < len(source):
+        line=source[index]
+        if index+1 < len(source) and '|' in line and re.match(r'^\s*\|?\s*:?-{3,}',source[index+1]):
+            rows=[]; index+=2
+            headers=[cell.strip() for cell in line.strip().strip('|').split('|')]
+            rows.append(headers)
+            while index < len(source) and '|' in source[index]:
+                rows.append([cell.strip() for cell in source[index].strip().strip('|').split('|')]); index+=1
+            width=max(len(row) for row in rows); sizes=[0]*width
+            for row in rows:
+                for column in range(width): sizes[column]=max(sizes[column],len(row[column]) if column<len(row) else 0)
+            for row_number,row in enumerate(rows):
+                rendered='│ '+' │ '.join((row[column] if column<len(row) else '').ljust(sizes[column]) for column in range(width))+' │'
+                lines.append(paint(rendered,'1' if row_number==0 else ''))
+                if row_number==0: lines.append('├─'+'─┼─'.join('─'*size for size in sizes)+'─┤')
+            continue
         marker=re.match(r'^\s*(`{3,}|~{3,})(.*)$',line)
         if marker and (fence is None or marker[1][0]==fence):
             if fence is None:
                 fence=marker[1][0]; language=marker[2].strip().lower()
                 lines.append(paint('  [code'+(': '+language if language else '')+']','2'))
             else: fence=None
-            continue
+            index+=1; continue
         if fence:
             lines.append('  '+(command_text(line) if language in ('sh','shell','bash','ash','console') else paint(line,'36')))
-            continue
+            index+=1; continue
         heading=re.match(r'^#{1,6}\s+(.+?)(?:\s+#+)?$',line)
-        if heading: lines.append(paint(inline_markdown(heading[1]),'1;35')); continue
-        if re.match(r'^\s*(?:---+|\*\*\*+)\s*$',line): lines.append(paint('─'*32,'2')); continue
+        if heading: lines.append(paint(inline_markdown(heading[1]),'1;35')); index+=1; continue
+        if re.match(r'^\s*(?:---+|\*\*\*+)\s*$',line): lines.append(paint('─'*32,'2')); index+=1; continue
         line=re.sub(r'^(\s*)[-*+]\s+',r'\1• ',line)
         if line.startswith('> '): line='│ '+line[2:]
         lines.append(inline_markdown(line))
+        index+=1
     return '\n'.join(lines)
+
+def terminal_renderer(choice='auto'):
+    if choice != 'auto': return choice
+    encoding=(getattr(sys.stdout,'encoding',None) or '').lower()
+    return 'ansi' if sys.stdout.isatty() and 'utf' in encoding and os.getenv('TERM') != 'dumb' else 'plain'
+
+def render_text(text):
+    return markdown(text) if RENDERER == 'ansi' else clean_terminal(text)
 
 def show_output(output):
     for field,label,style in [('stdout','stdout','32'),('stderr','stderr','31')]:
@@ -232,6 +262,40 @@ def load_session(session_id):
     if not os.path.exists(path): return None
     with open(path,encoding='utf-8') as f: return json.load(f)
 
+def recent_sessions(limit=10):
+    paths=[]
+    for name in os.listdir(session_dir()):
+        if name.endswith('.json'):
+            path=os.path.join(session_dir(),name)
+            paths.append((os.path.getmtime(path),name[:-5]))
+    sessions=[]
+    for _,session_id in sorted(paths,reverse=True):
+        try: item=load_session(session_id)
+        except (OSError,ValueError): continue
+        if not item: continue
+        prompt=''
+        for message in reversed(item.get('messages',[])):
+            if message.get('role')=='user' and isinstance(message.get('content'),str):
+                prompt=' '.join(message['content'].split()); break
+        sessions.append({'id':session_id,'updated':item.get('updated_at') or item.get('started_at') or '',
+                         'model':item.get('model') or '?','prompt':truncate_text(prompt,72)})
+        if len(sessions)>=limit: break
+    return sessions
+
+def choose_session(input_fn=input, limit=10):
+    sessions=recent_sessions(limit)
+    if not sessions:
+        print('No saved sessions.'); return None
+    print('Recent sessions:')
+    for number,item in enumerate(sessions,1):
+        print('%2d  %-22s %-28s %s' % (number,item['updated'][:19],item['model'][:28],item['prompt']))
+    selected=input_fn('Resume [1]: ').strip() or '1'
+    if selected.isdigit() and 1 <= int(selected) <= len(sessions):
+        return sessions[int(selected)-1]['id']
+    if any(item['id']==selected for item in sessions):
+        return selected
+    print('Invalid session selection.'); return None
+
 def export_sessions(target, session_id=None):
     names=[session_id+'.json'] if session_id else sorted(x for x in os.listdir(session_dir()) if x.endswith('.json'))
     data=[]
@@ -321,17 +385,45 @@ def provider_config(provider, base_url=None, key=None):
     return (base_url or os.getenv('NIM_BASE_URL' if provider == 'nvidia' else provider.upper()+'_BASE_URL', default_base),
             key or os.getenv(key_name) or ('ollama' if provider == 'ollama' else None))
 
+def show_models(models, current=None):
+    for number,item in enumerate(models,1):
+        print('%3d %s%s' % (number,'* ' if item==current else '  ',item))
+
+def select_model(models, selected=None, current=None, input_fn=input):
+    if not models: return None
+    if selected is None:
+        show_models(models,current)
+        selected=input_fn('Model [%s]: ' % (current or '1')).strip()
+        if not selected: return current or models[0]
+    if str(selected).isdigit() and 1 <= int(selected) <= len(models): return models[int(selected)-1]
+    if selected in models: return selected
+    matches=[item for item in models if str(selected).lower() in item.lower()]
+    if len(matches)==1: return matches[0]
+    print('Model not found%s.' % ('; matches: '+', '.join(matches[:8]) if matches else ''))
+    return None
+
 def choose_model(models):
-    for number, model in enumerate(models, 1): print('%3d %s' % (number, model))
-    selected = input('Modelo [1]: ').strip() or '1'
-    return models[int(selected)-1]
+    return select_model(models)
+
+def chat_help():
+    print('''Chat commands:
+  /model [number|name]   select model and keep conversation history
+  /models                list available models (* is active)
+  /provider [name]       list or switch provider
+  /renderer [mode]       auto, ansi, or plain
+  /status                show provider, model, session, and renderer
+  /terminal              run a shell command directly
+  /clear                 clear conversation history
+  /save                  save now
+  /export                export current session
+  /quit                  save and exit''')
 
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(prog='cki-lite')
     parser.add_argument('--provider', choices=tuple(PROVIDERS), default=os.getenv('CKI_LITE_PROVIDER','nvidia'))
     parser.add_argument('--base-url')
-    parser.add_argument('--key', help='NVIDIA API key; prefer NVIDIA_API_KEY instead')
+    parser.add_argument('--key', help='provider API key; prefer its environment variable')
     parser.add_argument('--model')
     parser.add_argument('--prompt', help='run one prompt and exit')
     parser.add_argument('--version', action='version', version='%(prog)s '+VERSION)
@@ -341,11 +433,17 @@ def main():
     parser.add_argument('--install', action='store_true', help='install executable to ~/.local/bin/cki-lite')
     parser.add_argument('--verbose', action='store_true', help='show agent loop and tool execution trace')
     parser.add_argument('--color', choices=('auto','always','never'), default='auto', help='terminal colors (default: auto)')
-    parser.add_argument('--session', help='resume a saved session')
+    parser.add_argument('--renderer', choices=('auto','ansi','plain'), default='auto', help='Markdown/LaTeX terminal renderer')
+    parser.add_argument('--session', nargs='?', const='__select__', help='resume by ID, or select a recent session')
+    parser.add_argument('--resume', action='store_true', help='select and resume a recent session')
     parser.add_argument('--export', metavar='FILE', help='export saved session(s) to JSON')
     args = parser.parse_args()
-    global COLOR
+    global COLOR, RENDERER
     COLOR = args.color == 'always' or (args.color == 'auto' and sys.stdout.isatty() and 'NO_COLOR' not in os.environ and os.getenv('TERM') != 'dumb')
+    RENDERER = terminal_renderer(args.renderer)
+    if args.resume or args.session == '__select__':
+        args.session=choose_session()
+        if not args.session: return 1
     if args.export:
         export_sessions(args.export, args.session); return
     if args.install:
@@ -375,6 +473,35 @@ def main():
         if prompt == '/clear': history = []; save_session(session_id,model,history,started_at); continue
         if prompt == '/save': save_session(session_id,model,history,started_at); print('Sessão salva: '+session_id); continue
         if prompt == '/export': export_sessions(session_id+'.json',session_id); continue
+        if prompt == '/help': chat_help(); continue
+        if prompt == '/models': show_models(models,model); continue
+        if prompt.startswith('/model'):
+            requested=prompt[6:].strip() or None
+            selected=select_model(models,requested,model)
+            if selected:
+                model=selected; save_session(session_id,model,history,started_at); print('Model: '+model)
+            continue
+        if prompt.startswith('/provider'):
+            requested=prompt[9:].strip().lower()
+            if not requested:
+                print('Providers: '+', '.join(('*'+name if name==args.provider else name) for name in PROVIDERS)); continue
+            if requested not in PROVIDERS:
+                print('Unknown provider: '+requested); continue
+            new_base,new_key=provider_config(requested)
+            if not new_key: new_key=getpass.getpass(requested.upper()+' API key: ')
+            try: new_models=visible_models(new_base,new_key,False,requested)
+            except Exception as error: print('Provider error: '+str(error)); continue
+            selected=select_model(new_models,current=None)
+            if not selected: continue
+            args.provider,args.base_url,key,models,model=requested,new_base,new_key,new_models,selected
+            save_session(session_id,model,history,started_at); print('Provider: %s | Model: %s' % (args.provider,model)); continue
+        if prompt.startswith('/renderer'):
+            requested=prompt[9:].strip().lower()
+            if not requested: print('Renderer: '+RENDERER); continue
+            if requested not in ('auto','ansi','plain'): print('Renderer must be auto, ansi, or plain.'); continue
+            RENDERER=terminal_renderer(requested); print('Renderer: '+RENDERER); continue
+        if prompt == '/status':
+            print('provider: %s\nmodel: %s\nsession: %s\nrenderer: %s' % (args.provider,model,session_id,RENDERER)); continue
         if prompt == '/terminal':
             command=input('shell> '); show_command(command)
             show_output(shell({'command':command},args.verbose)); continue
@@ -386,8 +513,8 @@ def main():
             retries = 0; result = None; last_error = None
             while True:
                 try:
-                    print('\n'+paint('NIM>','1;35')+' ', end='', flush=True)
-                    result = chat_request(args.base_url, key, {'model':model,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096})
+                    print('\n'+paint(model+'>','1;35')+' ', end='', flush=True)
+                    result = chat_request(args.base_url, key, {'model':model,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096}, RENDERER=='plain')
                     break
                 except Exception as request_error:
                     last_error = request_error
@@ -399,12 +526,12 @@ def main():
                     break
             if not isinstance(result, dict):
                 trace(args.verbose, 'model error elapsed=%.2fs' % (time.time()-started))
-                print('\nNIM error on %s: %s' % (model, last_error)); switched = False
+                print('\nModel error on %s: %s' % (model, last_error)); switched = False
                 for candidate in models:
                     if candidate == model: continue
                     try:
-                        print('\n'+paint('NIM>','1;35')+' ', end='', flush=True)
-                        result = chat_request(args.base_url, key, {'model':candidate,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096})
+                        print('\n'+paint(candidate+'>','1;35')+' ', end='', flush=True)
+                        result = chat_request(args.base_url, key, {'model':candidate,'messages':history,'tools':[TOOL],'tool_choice':'auto','temperature':.2,'max_tokens':4096}, RENDERER=='plain')
                         model = candidate; switched = True; print('[auto] continuing with %s' % model); break
                     except Exception as fallback_error: print('[auto] %s failed: %s' % (candidate, fallback_error))
                 if not switched:
@@ -412,6 +539,7 @@ def main():
                     exit_code = 1
                     break
             message = result['choices'][0]['message']; history.append(message); calls = message.get('tool_calls', [])
+            if RENDERER != 'plain' and message.get('content'): print(render_text(message['content']),end='')
             trace(args.verbose, 'model response elapsed=%.2fs tool_calls=%d' % (time.time()-started, len(calls)))
             if not calls:
                 save_session(session_id,model,history,started_at)

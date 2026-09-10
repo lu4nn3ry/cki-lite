@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+import tempfile
 import unittest
 
 SPEC = importlib.util.spec_from_file_location('cki_lite', 'cki-lite.py')
@@ -32,6 +34,31 @@ class CkiLiteTests(unittest.TestCase):
         self.assertEqual(key, 'ollama')
         self.assertIn('openrouter', cki.PROVIDERS)
         self.assertIn('gemini', cki.PROVIDERS)
+
+    def test_recent_session_selection(self):
+        previous=os.environ.get('CKI_LITE_HOME')
+        with tempfile.TemporaryDirectory() as directory:
+            os.environ['CKI_LITE_HOME']=directory
+            cki.save_session('older','model-a',[{'role':'user','content':'first task'}],'2026-01-01')
+            cki.save_session('newer','model-b',[{'role':'user','content':'latest task'}],'2026-01-02')
+            os.utime(os.path.join(directory,'older.json'),(1,1))
+            os.utime(os.path.join(directory,'newer.json'),(2,2))
+            selected=cki.choose_session(lambda _: '1')
+            self.assertEqual(selected,'newer')
+        if previous is None: os.environ.pop('CKI_LITE_HOME',None)
+        else: os.environ['CKI_LITE_HOME']=previous
+
+    def test_model_selection(self):
+        models=['alpha/model','beta/model']
+        self.assertEqual(cki.select_model(models,'2'),'beta/model')
+        self.assertEqual(cki.select_model(models,'alpha'),'alpha/model')
+        self.assertIsNone(cki.select_model(models,'missing'))
+
+    def test_markdown_and_latex_renderer(self):
+        rendered=cki.markdown('# Result\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n$\\alpha^2 + \\frac{x}{y}$')
+        self.assertIn('│ A │ B │',rendered)
+        self.assertIn('α²',rendered)
+        self.assertIn('(x)/(y)',rendered)
 
 if __name__ == '__main__':
     unittest.main()

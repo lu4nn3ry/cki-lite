@@ -1,11 +1,13 @@
 # cki-lite
 
-Terminal display supports basic Markdown (headings, bold, italic, inline code,
-fenced code, lists and links). Shell executable positions and inline code are cyan;
+Terminal display supports Markdown headings, emphasis, inline and fenced code,
+lists, links, tables and common LaTeX symbols/fractions/superscripts. Shell executable positions and inline code are cyan;
 stdout is green, stderr is red, and exit status is shown separately. Raw Markdown
 and tool output are preserved in session exports. Pipe output is plain by default.
-Use `--color always` to force colors or `--color never` / `NO_COLOR=1` to disable
-automatic colors. This lightweight renderer does not implement full Markdown tables.
+Use `--renderer auto|ansi|plain`. Auto enables formatted output on an interactive
+UTF-8 terminal and preserves plain streaming for pipes or limited terminals. Use
+`--color always` to force colors or `--color never` / `NO_COLOR=1` to disable
+automatic colors.
 
 The NVIDIA catalog is cached after its first successful fetch. Use `--refresh-models`
 to refresh it. A locally measured shortlist in `~/.cki-lite/cache/selected.json`
@@ -30,6 +32,7 @@ chmod +x cki-lite.py
 ./cki-lite.py --verbose
 ./cki-lite.py --version
 ./cki-lite.py --model MODEL --prompt 'inspect the current directory'
+./cki-lite.py --resume
 ```
 
 Providers OpenAI-compatible adicionais podem ser selecionados sem dependências
@@ -61,6 +64,12 @@ Only Gemma 3/4, OpenAI GPT-OSS and text-oriented Nemotron instruct/super/ultra/l
 
 ## CLI commands
 
+- `/help` — show all chat commands.
+- `/model [number|name]` — switch model while preserving conversation history.
+- `/models` — list available models and mark the active one.
+- `/provider [name]` — list or switch provider and select one of its models.
+- `/renderer [auto|ansi|plain]` — inspect or change output rendering.
+- `/status` — show provider, model, session and renderer.
 - `/terminal` — execute a shell command directly.
 - `/clear` — clear conversation history.
 - `/quit` — exit.
@@ -80,6 +89,10 @@ in `~/.cki-lite/cache/selected.json`. Use `--install` to copy the executable to
 ## Saved conversations and debug export
 
 Sessions are saved automatically as JSON under `~/.cki-lite/` (override with `CKI_LITE_HOME`). The session ID is printed when chat starts.
+
+Use `--resume` or `--session` without an ID to see recent conversations and
+select one by number. The menu shows the update time, model and latest user prompt.
+`--session ID` remains available for scripts.
 
 ```sh
 ./cki-lite.py --session 20260908-120000-a1b2c3  # resume

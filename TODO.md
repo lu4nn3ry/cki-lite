@@ -37,6 +37,10 @@ As decisões correspondentes a cada entrega estão registradas em [ADR.md](ADR.m
 - [x] Definir exit code zero para sucesso e não-zero quando nenhum modelo conclui a tarefa.
 - [x] Adicionar `--version`.
 - [x] Oferecer instalação simples em `~/.local/bin`.
+- [x] Listar sessões recentes e selecionar por número com `--resume` ou `--session`.
+- [x] Alternar provider/modelo dentro do chat preservando o histórico.
+- [x] Formatar Markdown, tabelas e LaTeX comum quando o terminal suporta UTF-8/ANSI.
+- [x] Exibir o nome do modelo ativo no lugar do rótulo fixo `NIM`.
 
 ### Modelos
 

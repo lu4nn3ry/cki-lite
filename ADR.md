@@ -153,3 +153,32 @@ o projeto.
   de primeira classe.
 - **Consequência:** HTTP, parsing, CLI, streaming e persistência permanecem
   implementações locais pequenas.
+
+## ADR-022 — Retomada por seleção de sessão
+
+- **Decisão:** `--resume` e `--session` sem ID listam as dez sessões mais
+  recentes com data, modelo e último pedido; `--session ID` permanece disponível.
+- **Motivo:** IDs internos não são uma interface humana adequada para retomar
+  conversas.
+- **Consequência:** seleção por menu exige terminal interativo; automações podem
+  continuar usando o ID explícito.
+
+## ADR-023 — Troca de provider e modelo no chat
+
+- **Decisão:** oferecer `/model`, `/models` e `/provider`, preservando o histórico
+  e salvando imediatamente a nova seleção na sessão.
+- **Motivo:** trocar de modelo é uma operação frequente e não justifica uma TUI.
+- **Consequência:** trocar provider consulta seu catálogo e pode solicitar a chave.
+
+## ADR-024 — Renderer adaptativo
+
+- **Decisão:** `--renderer auto` usa Markdown/LaTeX ANSI em TTY UTF-8 e plain com
+  streaming em pipes ou terminais limitados; `/renderer` permite troca dinâmica.
+- **Motivo:** oferecer saída legível sem dependência ou interface de tela inteira.
+- **Consequência:** formatação exige acumular a resposta; plain mantém streaming.
+
+## ADR-025 — Identidade visual do modelo
+
+- **Decisão:** rotular cada resposta com o nome do modelo ativo.
+- **Motivo:** fallback e troca dinâmica tornam o rótulo fixo `NIM` ambíguo.
+- **Consequência:** o usuário vê imediatamente qual modelo produziu cada resposta.
